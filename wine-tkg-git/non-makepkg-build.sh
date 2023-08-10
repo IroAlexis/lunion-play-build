@@ -23,7 +23,7 @@ pkgname=wine-tkg
 _build_in_tmpfs="true"
 
 _esyncsrcdir='esync'
-_where="$PWD" # track basedir as different Arch based distros are moving srcdir around
+_where="$(dirname "$(realpath "$0")")" # track basedir as different Arch based distros are moving srcdir around
 
 # set srcdir, Arch style
 if [ "$_build_in_tmpfs" = "true" ]; then
@@ -47,15 +47,15 @@ warning() {
 }
 
 pkgver() {
-  if [ -d "${srcdir}/${_winesrcdir}" ]; then
-	if [ "$_use_staging" = "true" ] && [ -d "${srcdir}/${_stgsrcdir}" ] && [[ "$_custom_wine_source" != *"ValveSoftware"* ]]; then
-	  cd "${srcdir}/${_stgsrcdir}"
-	else
-	  cd "${srcdir}/${_winesrcdir}"
-	fi
+  if [ -d "${_winesrcpath}" ]; then
+    if [ "$_use_staging" = "true" ] && [ -d "${_stgsrcpath}" ] && [[ "$_custom_wine_source" != *"ValveSoftware"* ]]; then
+      cd "${_stgsrcpath}"
+    else
+      cd "${_winesrcpath}"
+    fi
 
-	# retrieve current wine version - if staging is enabled, staging version will be used instead
-	_describe_wine
+    # retrieve current wine version - if staging is enabled, staging version will be used instead
+    _describe_wine
   fi
 }
 
@@ -125,6 +125,11 @@ _nomakepkgsrcinit() {
     _stgsrctarget="https://gitlab.winehq.org/wine/wine-staging.git"
   fi
 
+  _winemirrorpath="${_where}/${_winesrcdir}"
+  _stgmirrorpath="${_where}/${_stgsrcdir}"
+  _winesrcpath="${srcdir}/${_winesrcdir}"
+  _stgsrcpath="${srcdir}/${_stgsrcdir}"
+
   if [ -n "$_custom_wine_source" ]; then
     _winesrcdir=$( sed 's|/|-|g' <<< $(sed 's|.*://.[^/]*/||g' <<< ${_custom_wine_source//./}))
     _winesrctarget="$_custom_wine_source"
@@ -137,56 +142,47 @@ _nomakepkgsrcinit() {
 
     ## Handle git repos similarly to makepkg to preserve repositories when building both with and without makepkg on Arch
     # Wine source
-    cd "$_where"
-    git clone --mirror "${_winesrctarget}" "$_winesrcdir" 2> "$_where"/prepare.log || true
+    git clone --mirror "${_winesrctarget}" "${_winemirrorpath}" 2> "$_where"/prepare.log || true
 
     # Wine staging source
-    git clone --mirror "${_stgsrctarget}" "$_stgsrcdir" 2>> "$_where"/prepare.log || true
-
-    pushd "$srcdir" &>/dev/null
+    git clone --mirror "${_stgsrctarget}" "${_stgmirrorpath}" 2>> "$_where"/prepare.log || true
 
     # Wine staging update and checkout
-    cd "$_where"/"${_stgsrcdir}"
-    if [[ "${_stgsrctarget}" != "$(git config --get remote.origin.url)" ]] ; then
-      echo "${_stgsrcdir} is not a clone of $(git config --get remote.origin.url) (\"${_stgsrctarget}\"). Let's nuke stuff to get back on track, hopefully." >>"$_where"/prepare.log
-      rm -rf "$_where/${_stgsrcdir}" && rm -rf "${srcdir}/${_stgsrcdir}"
-      warning "Your ${_stgsrcdir} clone was deleted due to remote mismatch (\"${_stgsrctarget}\" differs from \"$(git config --get remote.origin.url)\"). Let's try again with a fresh clone."
+    if [[ "${_stgsrctarget}" != "$(git -C "${_stgmirrorpath}" config --get remote.origin.url)" ]] ; then
+      echo "${_stgsrcdir} is not a clone of $(git -C "${_stgmirrorpath}" config --get remote.origin.url) (\"${_stgsrctarget}\"). Let's nuke stuff to get back on track, hopefully." >>"$_where"/prepare.log
+      rm -rf "${_stgmirrorpath}"
+      warning "Your ${_stgsrcdir} clone was deleted due to remote mismatch (\"${_stgsrctarget}\" differs from \"$(git -C "${_stgmirrorpath}" config --get remote.origin.url)\"). Let's try again with a fresh clone."
       _nomakepkgsrcinit
     fi
-    git fetch --all -p
-    rm -rf "${srcdir}/${_stgsrcdir}" && git clone "$_where"/"${_stgsrcdir}" "${srcdir}/${_stgsrcdir}"
-    cd "${srcdir}"/"${_stgsrcdir}"
-    git -c advice.detachedHead=false checkout --force --no-track -B makepkg origin/HEAD
+    git -C "${_stgmirrorpath}" fetch --all -p
+    rm -rf "${_stgsrcpath}" && git clone "${_stgmirrorpath}" "${_stgsrcpath}"
+    git -C "${_stgsrcpath}" -c advice.detachedHead=false checkout --force --no-track -B makepkg origin/HEAD
     if [ -n "$_staging_version" ] && [ "$_use_staging" = "true" ]; then
-      git -c advice.detachedHead=false checkout "${_staging_version}" 2>> "$_where"/prepare.log
+      git -C "${_stgsrcpath}" -c advice.detachedHead=false checkout "${_staging_version}" 2>> "$_where"/prepare.log
     fi
 
     # Wine update and checkout
-    cd "$_where"/"${_winesrcdir}"
-    if [[ "${_winesrctarget}" != "$(git config --get remote.origin.url)" ]] ; then
-      echo "${_winesrcdir} is not a clone of $(git config --get remote.origin.url) (\"${_winesrctarget}\"). Let's nuke stuff to get back on track, hopefully." >>"$_where"/prepare.log
-      rm -rf "$_where/${_winesrcdir}" && rm -rf "${srcdir}/${_winesrcdir}"
-      warning "Your ${_winesrcdir} clone was deleted due to remote mismatch (\"${_winesrctarget}\" differs from \"$(git config --get remote.origin.url)\"). Let's try again with a fresh clone."
+    if [[ "${_winesrctarget}" != "$(git -C "${_winemirrorpath}" config --get remote.origin.url)" ]] ; then
+      echo "${_winesrcdir} is not a clone of $(git -C "${_winemirrorpath}" config --get remote.origin.url) (\"${_winesrctarget}\"). Let's nuke stuff to get back on track, hopefully." >>"$_where"/prepare.log
+      rm -rf "${_winemirrorpath}"
+      warning "Your ${_winesrcdir} clone was deleted due to remote mismatch (\"${_winesrctarget}\" differs from \"$(git -C "${_winemirrorpath}" config --get remote.origin.url)\"). Let's try again with a fresh clone."
       _nomakepkgsrcinit
     fi
-    git fetch --all -p
-    rm -rf "${srcdir}/${_winesrcdir}" && git clone "$_where"/"${_winesrcdir}" "${srcdir}/${_winesrcdir}"
-    cd "${srcdir}"/"${_winesrcdir}"
-    git -c advice.detachedHead=false checkout --force --no-track -B makepkg origin/HEAD
+    git -C "${_winemirrorpath}" fetch --all -p
+    rm -rf "${_winesrcpath}" && git clone "${_winemirrorpath}" "${_winesrcpath}"
+    git -C "${_winesrcpath}" -c advice.detachedHead=false checkout --force --no-track -B makepkg origin/HEAD
     if [ -n "$_plain_version" ] && [ "$_use_staging" != "true" ] || [[ "$_custom_wine_source" = *"ValveSoftware"* ]]; then
-      git -c advice.detachedHead=false checkout "${_plain_version}" 2>> "$_where"/prepare.log
+      git -C "${_winesrcpath}" -c advice.detachedHead=false checkout "${_plain_version}" 2>> "$_where"/prepare.log
       if [ "$_LOCAL_PRESET" = "valve-exp-bleeding" ]; then
         if [ -z "$_bleeding_tag" ]; then
-          _bleeding_tag=$(git tag -l --sort=-v:refname | grep "bleeding" | head -n 1)
+          _bleeding_tag=$(git -C "${_winesrcpath}" tag -l --sort=-v:refname | grep "bleeding" | head -n 1)
         fi
         echo -e "Bleeding edge tag: ${_bleeding_tag}" >> "$_where"/prepare.log
-        _bleeding_commit=$(git rev-list -n 1 "${_bleeding_tag}")
+        _bleeding_commit=$(git -C "${_winesrcpath}" rev-list -n 1 "${_bleeding_tag}")
         echo -e "Bleeding edge commit: ${_bleeding_commit}\n" >> "$_where"/prepare.log
-        git -c advice.detachedHead=false checkout "${_bleeding_tag}"
+        git -C "${_winesrcpath}" -c advice.detachedHead=false checkout "${_bleeding_tag}"
       fi
     fi
-
-    popd &>/dev/null
   fi
 
   # makepkg proton pkgver loop hack
@@ -213,7 +209,6 @@ build_wine_tkg() {
   set -e
 
   ## prepare step
-  cd "$srcdir"
   # state tracker start - FEAR THE MIGHTY FROG MINER
   touch "${_where}"/BIG_UGLY_FROGMINER
 
@@ -245,7 +240,6 @@ build_wine_tkg() {
 
   _polish
   _makedirs
-
   _prebuild_common
 
   if [ "$_nomakepkg_nover" = "true" ] ; then
@@ -307,13 +301,11 @@ build_wine_tkg() {
 
 if [ "$1" = "--deps64" ]; then
   _nomakepkgsrcinit
-  cd "${srcdir}"/"${_winesrcdir}"
-  ./configure --enable-win64
+  (cd "${_winesrcdir}" && ./configure --enable-win64)
   msg2 "You might find help regarding dependencies here: https://github.com/Tk-Glitch/PKGBUILDS/wiki/wine-tkg-git#dependencies"
 elif [ "$1" = "--deps32" ]; then
   _nomakepkgsrcinit
-  cd "${srcdir}"/"${_winesrcdir}"
-  ./configure
+  (cd "${_winesrcdir}" && ./configure)
   msg2 "You might find help regarding dependencies here: https://github.com/Tk-Glitch/PKGBUILDS/wiki/wine-tkg-git#dependencies"
 else
   # If $1 contains a path, and it exists, use it as default for config

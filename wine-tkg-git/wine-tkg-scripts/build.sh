@@ -31,7 +31,7 @@ _prebuild_common() {
 	  export CXXFLAGS="${_GCC_FLAGS}"
 	  export LDFLAGS="${_LD_FLAGS}"
 	  # Workaround for building legacy trees with mingw GCC11
-	  if ( cd "${srcdir}"/"${_winesrcdir}" && ! git merge-base --is-ancestor 9008cd2f2437650ad41ce8a8924ed1828ca21889 HEAD ); then
+	  if ! git -C "${_winesrcpath}" merge-base --is-ancestor 9008cd2f2437650ad41ce8a8924ed1828ca21889 HEAD; then
 	    export CROSSCFLAGS="${_CROSS_FLAGS} -fno-builtin-{sin,cos}{,f}"
 	  else
 	    export CROSSCFLAGS="${_CROSS_FLAGS}"
@@ -200,9 +200,9 @@ _package_nomakepkg() {
 	  else
 	    # $_realwineversion doesn't carry over into the fakeroot environment
 	    if [ "$_use_staging" = "true" ]; then
-	      cd "$srcdir/$_stgsrcdir"
+	      cd "$_stgsrcpath"
 	    else
-	      cd "$srcdir/$_winesrcdir"
+	      cd "$_winesrcpath"
 	    fi
 	    _realwineversion=$(_describe_wine)
 	    _prefix="$_DEFAULT_EXTERNAL_PATH/$pkgname-$_realwineversion"
@@ -213,15 +213,13 @@ _package_nomakepkg() {
 	  # package wine 32-bit
 	  # (according to the wine wiki, this reverse 32-bit/64-bit packaging order is important)
 	  msg2 'Packaging Wine-32...'
-	  cd "${srcdir}/${pkgname}"-32-build
-	  make install
+	  make -C "${srcdir}/${pkgname}-32-build" install
 	fi
 
 	if [ "$_NOLIB64" != "true" ]; then
 	  # package wine 64-bit
 	  msg2 'Packaging Wine-64...'
-	  cd "${srcdir}/${pkgname}"-64-build
-	  make install
+	  make -C "${srcdir}/${pkgname}-64-build" install
 	fi
 
 	if [ "$_MIME_NOPE" = "true" ]; then
@@ -240,7 +238,7 @@ _package_nomakepkg() {
 
 	# strip
 	if [ "$_EXTERNAL_INSTALL" != "proton" ]; then
-	  if [ "$_protonify" = "true" ] && ( cd "${srcdir}"/"${_winesrcdir}" && ! git merge-base --is-ancestor 2e5e5ade82b5e3b1d70ebe6b1a824bdfdedfd04e HEAD ); then
+	  if [ "$_protonify" = "true" ] && ! git -C "${_winesrcpath}" merge-base --is-ancestor 2e5e5ade82b5e3b1d70ebe6b1a824bdfdedfd04e HEAD; then
 	    if [ "$_pkg_strip" = "true" ]; then
 	      msg2 "Fixing x86_64 PE files..."
 	      find "$_prefix"/"$_lib64name"/ -type f -not '(' -iname '*.pc' -or -iname '*.cmake' -or -iname '*.a' -or -iname '*.la' -or -iname '*.def' -or -iname '*.py' -or -iname '*.pyc' -or -iname '*.pl' ')' -printf '--strip-unneeded\0%p\0%p\0' | xargs -0 -r -P1 -n3 objcopy --file-alignment=4096 --set-section-flags .text=contents,alloc,load,readonly,code
@@ -324,7 +322,7 @@ _package_nomakepkg() {
 	  touch "${pkgdir}"/../HL3_confirmed
 	else
 	  if [ -e "$_where"/tarplz ];then
-	    ( cd "$_where"/non-makepkg-builds && tar -cvf "${_nomakepkg_pkgname}".tar "${_nomakepkg_pkgname}" && rm -rf "${_nomakepkg_pkgname}" )
+	    tar -C "$_where/non-makepkg-builds" -cvf "${_nomakepkg_pkgname}.tar" "${_nomakepkg_pkgname}" && rm -rf "${_nomakepkg_pkgname}"
 	  fi
 	fi
 }

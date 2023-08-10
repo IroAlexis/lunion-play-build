@@ -37,48 +37,46 @@ _exports_32() {
 
 _configure_32() {
   msg2 'Configuring Wine-32...'
-  cd "${srcdir}/${pkgname}"-32-build
   if [ "$_NUKR" != "debug" ] || [[ "$_DEBUGANSW3" =~ [yY] ]]; then
-	 if [ "$_NOLIB64" = "true" ]; then
-       ../"${_winesrcdir}"/configure \
-	      --prefix="$_prefix" \
-	      "${_configure_args32[@]}" \
-	      "${_configure_args[@]}"
-	  else
-        ../"${_winesrcdir}"/configure \
-	      --prefix="$_prefix" \
-	      "${_configure_args32[@]}" \
-	      "${_configure_args[@]}" \
-	      --with-wine64="${srcdir}/${pkgname}"-64-build
-	 fi
+    if [ "$_NOLIB64" = "true" ]; then
+      ( cd "${srcdir}/${pkgname}-32-build" && "${_winesrcpath}/configure" \
+        --prefix="$_prefix" \
+        "${_configure_args32[@]}" \
+        "${_configure_args[@]}" )
+    else
+      ( cd "${srcdir}/${pkgname}-32-build" && "${_winesrcpath}/configure" \
+        --prefix="$_prefix" \
+        "${_configure_args32[@]}" \
+        "${_configure_args[@]}" \
+        --with-wine64="${srcdir}/${pkgname}-64-build" )
+    fi
   fi
   if [ "$_pkg_strip" != "true" ]; then
     msg2 "Disable strip"
-    sed 's|STRIP = strip|STRIP =|g' "${srcdir}/${pkgname}"-32-build/Makefile -i
+    sed 's|STRIP = strip|STRIP =|g' "${srcdir}/${pkgname}-32-build/Makefile" -i
   fi
 }
 
 _build_32() {
   msg2 'Building Wine-32...'
-  cd "${srcdir}/${pkgname}"-32-build
   if [ "$_SINGLE_MAKE" = 'true' ]; then
     MAKEFLAGS="${MFLAGS#-j* }"
     exec "$@"
   elif [ "$_LOCAL_OPTIMIZED" = 'true' ]; then
     # make using all available threads
     if [ "$_log_errors_to_file" = "true" ]; then
-      make -j$(nproc) 2> "$_where/debug.log"
+      make -C "${srcdir}/${pkgname}-32-build" -j$(nproc) 2> "$_where/debug.log"
     else
       #_buildtime32=$( time ( make -j$(nproc) 2>&1 ) 3>&1 1>&2 2>&3 ) - Bash 5.2 is frogged - https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1018727
-      make -j$(nproc)
+      make -C "${srcdir}/${pkgname}-32-build" -j$(nproc)
     fi
   else
     # make using makepkg settings
     if [ "$_log_errors_to_file" = "true" ]; then
-      make 2> "$_where/debug.log"
+      make -C "${srcdir}/${pkgname}-32-build" 2> "$_where/debug.log"
     else
       #_buildtime32=$( time ( make 2>&1 ) 3>&1 1>&2 2>&3 ) - Bash 5.2 is frogged - https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1018727
-      make
+      make -C "${srcdir}/${pkgname}-32-build"
     fi
   fi
 }

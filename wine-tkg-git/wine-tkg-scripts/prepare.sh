@@ -559,20 +559,16 @@ _committer() {
 _source_cleanup() {
 	if [ "$_NUKR" != "debug" ]; then
 	  if [ "$_use_staging" = "true" ]; then
-	    cd "${srcdir}"/"${_stgsrcdir}"
-
 	    # restore the targetted trees to their git origin state
 	    # for the patches not to fail on subsequent aborted builds
 	    msg2 'Cleaning wine-staging source code tree...'
-	    git reset --hard HEAD 	# restore tracked files
-	    git clean -xdf 			# delete untracked files
+	    git -C "${_stgsrcpath}" reset --hard HEAD 	# restore tracked files
+	    git -C "${_stgsrcpath}" clean -xdf 			# delete untracked files
 	  fi
 
-	  cd "${srcdir}"/"${_winesrcdir}"
-
 	  msg2 'Cleaning wine source code tree...'
-	  git reset --hard HEAD 	# restore tracked files
-	  git clean -xdf 			# delete untracked files
+	  git -C "${_winesrcpath}" reset --hard HEAD 	# restore tracked files
+	  git -C "${_winesrcpath}" clean -xdf 			# delete untracked files
 	fi
 }
 
@@ -586,19 +582,18 @@ _prepare() {
   _staging_args+=($_staging_userargs)
 
   if [ "$_use_staging" = "true" ] && [ "$_staging_upstreamignore" != "true" ] && [[ "$_custom_wine_source" != *"ValveSoftware"* ]]; then
-    cd "${srcdir}"/"${_winesrcdir}"
     # change back to the wine upstream commit that this version of wine-staging is based in
     msg2 'Changing wine HEAD to the wine-staging base commit...'
-    if [ -e "$_stgsrcdir"/patches/patchinstall.sh ]; then
-      if [ ! -e ../"$_stgsrcdir"/staging/upstream-commit ] || $( git merge-base "$( cat ../"$_stgsrcdir"/staging/upstream-commit )" --is-ancestor "$(../"$_stgsrcdir"/patches/patchinstall.sh --upstream-commit)" ); then
+    if [ -e "${_stgsrcpath}/patches/patchinstall.sh" ]; then
+      if [ ! -e "${_stgsrcpath}/staging/upstream-commit" ] || git -C "${_winesrcpath}" merge-base "$( cat "${_stgsrcpath}/staging/upstream-commit" )" --is-ancestor "$("${_stgsrcpath}/patches/patchinstall.sh" --upstream-commit)"; then
         msg2 "Using patchinstall.sh --upstream-commit"
         # Use patchinstall.sh --upstream-commit
-        git -c advice.detachedHead=false checkout "$(../"$_stgsrcdir"/patches/patchinstall.sh --upstream-commit)"
+        git -C "${_winesrcpath}" -c advice.detachedHead=false checkout "$("${_stgsrcpath}/patches/patchinstall.sh" --upstream-commit)"
       fi
     else
       msg2 "Using upstream-commit file"
       # Use upstream-commit file if patchinstall.sh --upstream-commit doesn't report the same upstream commit target
-      git -c advice.detachedHead=false checkout "$( cat ../"$_stgsrcdir"/staging/upstream-commit )"
+      git -C "${_winesrcpath}" -c advice.detachedHead=false checkout "$( cat "${_stgsrcpath}/staging/upstream-commit" )"
     fi
   fi
 
@@ -706,15 +701,13 @@ _prepare() {
 	  echo "You will be prompted after the 64-bit side is built (compat workaround)" >> "$_where"/last_build_config.log
 	fi
 
-	_realwineversion=$(_describe_wine)
+	_realwineversion="$(cd ${_winesrcpath} && _describe_wine)"
 	echo "" >> "$_where"/last_build_config.log
 	echo "Wine (plain) version: $_realwineversion" >> "$_where"/last_build_config.log
 
 	if [ "$_use_staging" = "true" ]; then
-	  cd "${srcdir}"/"${_stgsrcdir}"
-	  _realwineversion=$(_describe_wine)
+	  _realwineversion="$(cd ${stgsrcpath} && _describe_wine)"
 	  echo "Using wine-staging patchset (version $_realwineversion)" >> "$_where"/last_build_config.log
-	  cd "${srcdir}"/"${_winesrcdir}"
 	fi
 
 	echo "" >> "$_where"/last_build_config.log
@@ -722,20 +715,18 @@ _prepare() {
 
 	# Disable local Esync on 553986f
 	if [ "$_use_staging" = "true" ]; then
-	  cd "${srcdir}"/"${_stgsrcdir}"
-	  if git merge-base --is-ancestor 553986fdfb111914f793ff1487d53af022e4be19 HEAD; then # eventfd_synchronization: Add patch set.
+	  if git -C "${_stgsrcpath}" merge-base --is-ancestor 553986fdfb111914f793ff1487d53af022e4be19 HEAD; then # eventfd_synchronization: Add patch set.
 	    _use_esync="false"
 	    _staging_esync="true"
 	    echo "Disabled the local Esync patchset to use Staging impl instead." >> "$_where"/last_build_config.log
 	  fi
-	  cd "${srcdir}"/"${_winesrcdir}"
 	fi
 
 	if [ "$_use_esync" = "true" ]; then
 	  if [ -z "$_esync_version" ]; then
-	    if git merge-base --is-ancestor 2600ecd4edfdb71097105c74312f83845305a4f2 HEAD; then # 3.20+
+	    if git -C "${_winesrcpath}" merge-base --is-ancestor 2600ecd4edfdb71097105c74312f83845305a4f2 HEAD; then # 3.20+
 	      _esync_version="ce79346"
-	    elif git merge-base --is-ancestor aec7befb5115d866724149bbc5576c7259fef820 HEAD; then # 3.19-3.17
+	    elif git -C "${_winesrcpath}" merge-base --is-ancestor aec7befb5115d866724149bbc5576c7259fef820 HEAD; then # 3.19-3.17
 	      _esync_version="b4478b7"
 	    else
 	      _esync_version="5898a69" # 3.16 and lower
@@ -747,13 +738,13 @@ _prepare() {
 
 	if [ "$_use_pba" = "true" ]; then
 	  # If using a wine version that includes 944e92b, disable PBA
-	  if git merge-base --is-ancestor 944e92ba06ecadeb933d95e30035323483dfe7c7 HEAD; then # wined3d: Pass the wined3d_buffer_desc structure directly to buffer_init()
+	  if git -C "${_winesrcpath}" merge-base --is-ancestor 944e92ba06ecadeb933d95e30035323483dfe7c7 HEAD; then # wined3d: Pass the wined3d_buffer_desc structure directly to buffer_init()
 	    _pba_version="none"
 	  # If using a wine version that includes 580ea44, apply 3.17+ fixes
-	  elif git merge-base --is-ancestor 580ea44bc65472c0304d74b7e873acfb7f680b85 HEAD; then # wined3d: Use query buffer objects for occlusion queries
+	  elif git -C "${_winesrcpath}" merge-base --is-ancestor 580ea44bc65472c0304d74b7e873acfb7f680b85 HEAD; then # wined3d: Use query buffer objects for occlusion queries
 	    _pba_version="317+"
 	  # If using a wine version that includes cf9536b, apply 3.14+ fixes
-	  elif git merge-base --is-ancestor cf9536b6bfbefbf5003c7633446a91f6e399c4de HEAD; then # wined3d: Move OpenGL initialisation code to adapter_gl.c
+	  elif git -C "${_winesrcpath}" merge-base --is-ancestor cf9536b6bfbefbf5003c7633446a91f6e399c4de HEAD; then # wined3d: Move OpenGL initialisation code to adapter_gl.c
 	    _pba_version="314+"
 	  else
 	    _pba_version="313-"
@@ -787,9 +778,9 @@ _prepare() {
 	# Reverts
 	nonuser_reverter() {
 	  if [ "$_NUKR" != "debug" ] || [[ "$_DEBUGANSW1" =~ [yY] ]]; then
-	    if git merge-base --is-ancestor $_committorevert HEAD; then
-	      echo -e "\n$_committorevert reverted $_hotfixmsg" >> "$_where"/prepare.log
-	      git revert -n --no-edit $_committorevert >> "$_where"/prepare.log || (error "Patch application has failed. The error was logged to $_where/prepare.log for your convenience."; msg2 "To use the last known good mainline version, please set _plain_version=\"$_last_known_good_mainline\" in your .cfg"; msg2 "To use the last known good staging version, please set _staging_version=\"$_last_known_good_staging\" in your .cfg (requires _use_staging=\"true\")" && exit 1)
+	    if git -C "${_winesrcpath}" merge-base --is-ancestor "${_committorevert}" HEAD; then
+	      echo -e "\n${_committorevert} reverted ${_hotfixmsg}" >> "$_where"/prepare.log
+	      git -C "${_winesrcpath}" revert -n --no-edit "$_committorevert" >> "$_where"/prepare.log || (error "Patch application has failed. The error was logged to $_where/prepare.log for your convenience."; msg2 "To use the last known good mainline version, please set _plain_version=\"$_last_known_good_mainline\" in your .cfg"; msg2 "To use the last known good staging version, please set _staging_version=\"$_last_known_good_staging\" in your .cfg (requires _use_staging=\"true\")" && exit 1)
 	      if [ "$_hotfixmsg" != "(hotfix)" ] && [ "$_hotfixmsg" != "(staging hotfix)" ]; then
 	        echo -e "$_committorevert reverted $_hotfixmsg" >> "$_where"/last_build_config.log
 	      fi
@@ -800,9 +791,9 @@ _prepare() {
 	# Backports
 	nonuser_cherry_picker() {
 	  if [ "$_NUKR" != "debug" ] || [[ "$_DEBUGANSW1" =~ [yY] ]]; then
-	    if ! git merge-base --is-ancestor $_committocherrypick HEAD; then
-	      echo -e "\n$_committocherrypick cherry picked $_hotfixmsg" >> "$_where"/prepare.log
-	      git cherry-pick -n --keep-redundant-commits $_committocherrypick >> "$_where"/prepare.log || (error "Patch application has failed. The error was logged to $_where/prepare.log for your convenience." && exit 1)
+	    if ! git -C "${_winesrcpath}" merge-base --is-ancestor "${_committocherrypick}" HEAD; then
+	      echo -e "\n${_committocherrypick} cherry picked ${_hotfixmsg}" >> "$_where"/prepare.log
+	      git -C "${_winesrcpath}" cherry-pick -n --keep-redundant-commits "${_committocherrypick}" >> "$_where"/prepare.log || (error "Patch application has failed. The error was logged to $_where/prepare.log for your convenience." && exit 1)
 	      if [ "$_hotfixmsg" != "(hotfix)" ] && [ "$_hotfixmsg" != "(staging hotfix)" ]; then
 	        echo -e "$_committocherrypick cherry picked $_hotfixmsg" >> "$_where"/last_build_config.log
 	      fi
@@ -882,7 +873,7 @@ _prepare() {
 	fi
 
 	# Update winevulkan
-	if [ "$_update_winevulkan" = "true" ] && ! git merge-base --is-ancestor 3e4189e3ada939ff3873c6d76b17fb4b858330a8 HEAD && git merge-base --is-ancestor eb39d3dbcac7a8d9c17211ab358cda4b7e07708a HEAD; then
+	if [ "$_update_winevulkan" = "true" ] && ! git -C "${_winesrcpath}" merge-base --is-ancestor 3e4189e3ada939ff3873c6d76b17fb4b858330a8 HEAD && git -C "${_winesrcpath}" merge-base --is-ancestor eb39d3dbcac7a8d9c17211ab358cda4b7e07708a HEAD; then
 	  _patchname='winevulkan-1.1.103.patch' && _patchmsg="Applied winevulkan 1.1.103 patch" && nonuser_patcher
 	fi
 
@@ -901,7 +892,7 @@ _prepare() {
     source "$_where"/wine-tkg-patches/misc/usvfs/usvfs
 
 	# Reverts c6b6935 due to https://bugs.winehq.org/show_bug.cgi?id=47752
-	if [ "$_c6b6935_revert" = "true" ] && ! git merge-base --is-ancestor cb703739e5c138e3beffab321b84edb129156000 HEAD; then
+	if [ "$_c6b6935_revert" = "true" ] && ! git -C "${_winesrcpath}" merge-base --is-ancestor cb703739e5c138e3beffab321b84edb129156000 HEAD; then
 	  _patchname='revert-c6b6935.patch' && _patchmsg="Reverted c6b6935 to fix regression affecting performance negatively" && nonuser_patcher
 	fi
 
@@ -913,23 +904,23 @@ _prepare() {
 	# Staging
 	if [ "$_use_staging" = "true" ] && [ "$_NUKR" != "debug" ] || [[ "$_DEBUGANSW2" =~ [yY] ]]; then
 	  # We're converting our array to string to allow manipulation
-	  if ( cd "${srcdir}"/"${_stgsrcdir}" && ! git merge-base --is-ancestor b8ca0eae9f47491ba257c422a2bc03fc37d13c22 HEAD ) || [ ! -d "${srcdir}"/"${_stgsrcdir}"/patches/ntdll-NtAlertThreadByThreadId ]; then
+	  if ! git -C "${_stgsrcpath}" merge-base --is-ancestor b8ca0eae9f47491ba257c422a2bc03fc37d13c22 HEAD || [ ! -d "${_stgsrcpath}/patches/ntdll-NtAlertThreadByThreadId" ]; then
 	    _staging_args=$( printf "%s" "${_staging_args[*]}" | sed 's/-W ntdll-NtAlertThreadByThreadId // ; s/ -W ntdll-NtAlertThreadByThreadId// ; s/-W ntdll-NtAlertThreadByThreadId//' )
 	  else
 	    _staging_args=$( printf "%s" "${_staging_args[*]}" )
 	  fi
 	  # Not strictly necessary, but we haven't used the py script til now, so let's be conservative
-	  if ( cd "${srcdir}"/"${_stgsrcdir}" && ! git merge-base --is-ancestor f2f8b949b1ae1bedc2b3b16edc1d09a08110d2f6 HEAD ); then
+	  if ! git -C "${_stgsrcpath}" merge-base --is-ancestor f2f8b949b1ae1bedc2b3b16edc1d09a08110d2f6 HEAD; then
 	    _staging_script="patches/patchinstall.sh"
 	  else
 	    _staging_script="staging/patchinstall.py"
 	  fi
 	  msg2 "Applying wine-staging patches using $_staging_script... \n     Staging overrides used, if any: ${_staging_args}" && echo -e "\nStaging overrides, if any: ${_staging_args}\n" >> "$_where"/last_build_config.log && echo -e "\nApplying wine-staging patches..." >> "$_where"/prepare.log
-	  "${srcdir}"/"${_stgsrcdir}"/$_staging_script DESTDIR="${srcdir}/${_winesrcdir}" --all $_staging_args >> "$_where"/prepare.log 2>&1 || (error "Patch application has failed. The error was logged to $_where/prepare.log for your convenience."; msg2 "To use the last known good mainline version, please set _plain_version=\"$_last_known_good_mainline\" in your .cfg"; msg2 "To use the last known good staging version, please set _staging_version=\"$_last_known_good_staging\" in your .cfg (requires _use_staging=\"true\")" && exit 1)
+	  "${_stgsrcpath}/${_staging_script}" DESTDIR="${_winesrcpath}" --all "${_staging_args}" >> "$_where"/prepare.log 2>&1 || (error "Patch application has failed. The error was logged to $_where/prepare.log for your convenience."; msg2 "To use the last known good mainline version, please set _plain_version=\"$_last_known_good_mainline\" in your .cfg"; msg2 "To use the last known good staging version, please set _staging_version=\"$_last_known_good_staging\" in your .cfg (requires _use_staging=\"true\")" && exit 1)
 
 	  # Remove staging version tag
-	  if [ -e "${srcdir}"/"${_winesrcdir}"/libs/wine/Makefile.in ]; then
-	    sed -i "s/  (Staging)//g" "${srcdir}"/"${_winesrcdir}"/libs/wine/Makefile.in
+	  if [ -e "${_winesrcpath}/libs/wine/Makefile.in" ]; then
+	    sed -i "s/  (Staging)//g" "${_winesrcpath}/libs/wine/Makefile.in"
 	  fi
 	  _commitmsg="03-staging" _committer
 	fi
@@ -1036,13 +1027,13 @@ _prepare() {
     source "$_where"/wine-tkg-patches/proton-tkg-specific/proton_eac/proton_eac
 
 	# Proton-tkg needs to know if standard dlopen() is in use
-	if ( cd "${srcdir}"/"${_winesrcdir}" && git merge-base --is-ancestor b87256cd1db21a59484248a193b6ad12ca2853ca HEAD ); then
+	if git -C "${_winesrcpath}" merge-base --is-ancestor b87256cd1db21a59484248a193b6ad12ca2853ca HEAD; then
 	  _standard_dlopen="true"
 	else
 	  _standard_dlopen="false"
 	fi
 
-	if [[ "$_custom_wine_source" != *"ValveSoftware"* ]] && ( cd "${srcdir}"/"${_winesrcdir}" && git merge-base --is-ancestor ce91ef6426bf5065bd31bb82fa4f76011e7a9a36 HEAD ); then
+	if [[ "$_custom_wine_source" != *"ValveSoftware"* ]] && git -C "${_winesrcpath}" merge-base --is-ancestor ce91ef6426bf5065bd31bb82fa4f76011e7a9a36 HEAD; then
 	  _processinfoclass="true"
 	fi
 
@@ -1054,7 +1045,7 @@ _polish() {
 	# wine user patches
 	_userpatch_target="plain-wine"
 	_userpatch_ext="my"
-	cd "${srcdir}"/"${_winesrcdir}"
+	cd "${_winesrcpath}"
 	if [ "$_NUKR" != "debug" ] && [ "$_unfrog" != "true" ] || [[ "$_DEBUGANSW1" =~ [yY] ]]; then
 	  if [ "$_LOCAL_PRESET" != "staging" ] && [ "$_LOCAL_PRESET" != "mainline" ] && [ -z "$_localbuild" ]; then
 	    hotfixer && _commitmsg="05-hotfixes" _committer
@@ -1065,7 +1056,7 @@ _polish() {
 	fi
 
 	# UNFROG HOTFIX - Autoconf 2.70 fix for legacy trees - https://github.com/wine-mirror/wine/commit/d7645b67c350f7179a1eba749ec4524c74948d86
-	if [ "$_unfrog" = "true" ] && ( cd "${srcdir}"/"${_winesrcdir}" && ! git merge-base --is-ancestor d7645b67c350f7179a1eba749ec4524c74948d86 HEAD ); then
+	if [ "$_unfrog" = "true" ] && ! git -C "${_winesrcpath}" merge-base --is-ancestor d7645b67c350f7179a1eba749ec4524c74948d86 HEAD; then
 	  patch -Np1 < "$_where"/wine-tkg-patches/hotfixes/autoconf-legacy-fix/autoconf-legacy-fix.mypatch
 	fi
 
@@ -1086,7 +1077,7 @@ _polish() {
 	# wine late user patches - Applied after make_vulkan/make_requests/autoreconf
 	_userpatch_target="plain-wine"
 	_userpatch_ext="mylate"
-	cd "${srcdir}"/"${_winesrcdir}"
+	cd "${_winesrcpath}"
 	if [ "$_user_patches" = "true" ]; then
 	  user_patcher && _commitmsg="07-late-userpatches" _committer
 	fi
@@ -1098,14 +1089,14 @@ _polish() {
 
 	# The versioning string has moved with 1dd3051cca5cafe90ce44460731df61abb680b3b
 	# Since this is reverted by the hotfixer path, only use the new path on 0c249e6+ (deprecation of the hotfixer path)
-	if ( cd "${srcdir}"/"${_winesrcdir}" && ! git merge-base --is-ancestor 0c249e6125fc9dc6ee86b4ef6ae0d9fa2fc6291b HEAD ); then
-	  _versioning_path="${srcdir}/${_winesrcdir}/libs/wine/Makefile.in"
+	if ! git -C "${_winesrcpath}" merge-base --is-ancestor 0c249e6125fc9dc6ee86b4ef6ae0d9fa2fc6291b HEAD; then
+	  _versioning_path="${_winesrcpath}/libs/wine/Makefile.in"
 	  _versioning_string="top_srcdir"
-	elif ( cd "${srcdir}"/"${_winesrcdir}" && git merge-base --is-ancestor c6b5f4a406351e7faef33de23d64db4445ef9aea HEAD ); then
-	  _versioning_path="${srcdir}/${_winesrcdir}/configure.ac"
+	elif git -C "${_winesrcpath}" merge-base --is-ancestor c6b5f4a406351e7faef33de23d64db4445ef9aea HEAD; then
+	  _versioning_path="${_winesrcpath}/configure.ac"
 	  _versioning_string="wine_srcdir"
 	else
-	  _versioning_path="${srcdir}/${_winesrcdir}/Makefile.in"
+	  _versioning_path="${_winesrcpath}/Makefile.in"
 	  _versioning_string="srcdir"
 	fi
 
@@ -1119,8 +1110,8 @@ _polish() {
 	  # Set custom version so that it reports the same as pkgver
 	  if [ "$_versioning_string" = "wine_srcdir" ]; then
 	    sed -i "s/GIT_DIR=\${$_versioning_string}.git git describe HEAD 2>\\/dev\\/null || echo \\\\\"wine-\\\\\$(PACKAGE_VERSION)\\\\\"/echo \\\\\"wine-$_realwineversion\\\\\"/g" "$_versioning_path"
-	    if [ -e "${srcdir}/${_winesrcdir}/configure" ]; then
-	      sed -i "s/GIT_DIR=\${$_versioning_string}.git git describe HEAD 2>\\/dev\\/null || echo \\\\\"wine-\\\\\$(PACKAGE_VERSION)\\\\\"/echo \\\\\"wine-$_realwineversion\\\\\"/g" "${srcdir}/${_winesrcdir}/configure"
+	    if [ -e "${_winesrcpath}/configure" ]; then
+	      sed -i "s/GIT_DIR=\${$_versioning_string}.git git describe HEAD 2>\\/dev\\/null || echo \\\\\"wine-\\\\\$(PACKAGE_VERSION)\\\\\"/echo \\\\\"wine-$_realwineversion\\\\\"/g" "${_winesrcpath}/configure"
 	    fi
 	  else
 	    sed -i "s/GIT_DIR=\$($_versioning_string)\\/.git git describe HEAD 2>\\/dev\\/null || echo \"wine-\$(PACKAGE_VERSION)\"/echo \"wine-$_realwineversion\"/g" "$_versioning_path"
@@ -1147,7 +1138,7 @@ _polish() {
 	    _version_tags+=(Nine)
 	  fi
 	  if [ "$_use_vkd3dlib" != "true" ]; then
-	    if [ "$_dxvk_dxgi" != "true" ] && git merge-base --is-ancestor 74dc0c5df9c3094352caedda8ebe14ed2dfd615e HEAD; then
+	    if [ "$_dxvk_dxgi" != "true" ] && git -C "${_winesrcpath}" merge-base --is-ancestor 74dc0c5df9c3094352caedda8ebe14ed2dfd615e HEAD; then
 	      _version_tags+=(Vkd3d DXVK-Compatible)
 	    fi
 	  fi
@@ -1157,7 +1148,7 @@ _polish() {
 	  else
 	    sed -i "s/\"\\\1.*\"/\"\\\1  ( ${_version_tags[*]} )\"/g" "${_versioning_path}"
 	  fi
-	  sed -i "s/\"\\\1.*\"/\"\\\1  ( ${_version_tags[*]} )\"/g" "${srcdir}"/"${_winesrcdir}"/dlls/ntdll/Makefile.in
+	  sed -i "s/\"\\\1.*\"/\"\\\1  ( ${_version_tags[*]} )\"/g" "${srcdir}/${_winesrcdir}/dlls/ntdll/Makefile.in"
 	fi
 
 	# Fix libldap detection on Arch

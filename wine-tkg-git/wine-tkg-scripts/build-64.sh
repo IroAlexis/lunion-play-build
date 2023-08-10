@@ -22,21 +22,20 @@ _exports_64() {
 
 _configure_64() {
   msg2 'Configuring Wine-64...'
-  cd  "${srcdir}"/"${pkgname}"-64-build
   if [ "$_NUKR" != "debug" ] || [[ "$_DEBUGANSW3" =~ [yY] ]]; then
-    chmod +x ../"${_winesrcdir}"/configure
+    chmod u+x "${_winesrcpath}/configure"
     if [ "$_NOLIB32" != "wow64" ]; then
-      ../"${_winesrcdir}"/configure \
-	    --prefix="$_prefix" \
-		--enable-win64 \
-		"${_configure_args64[@]}" \
-		"${_configure_args[@]}"
+      ( cd "${srcdir}/${pkgname}-64-build" && "${_winesrcpath}/configure" \
+        --prefix="$_prefix" \
+        --enable-win64 \
+        "${_configure_args64[@]}" \
+        "${_configure_args[@]}" )
     else
-      ../"${_winesrcdir}"/configure \
-	    --prefix="$_prefix" \
-		--enable-archs=i386,x86_64 \
-		"${_configure_args64[@]}" \
-		"${_configure_args[@]}"
+      ( cd "${srcdir}/${pkgname}-64-build" && "${_winesrcpath}/configure" \
+        --prefix="$_prefix" \
+        --enable-archs=i386,x86_64 \
+        "${_configure_args64[@]}" \
+        "${_configure_args[@]}" )
     fi
   fi
   if [ "$_pkg_strip" != "true" ]; then
@@ -56,16 +55,15 @@ _tools_64() (
 
 _build_64() {
   msg2 'Building Wine-64...'
-  cd  "${srcdir}"/"${pkgname}"-64-build
   if [ "$_SINGLE_MAKE" = 'true' ]; then
     exec "$@"
   elif [ "$_LOCAL_OPTIMIZED" = 'true' ]; then
     # make using all available threads
     if [ "$_log_errors_to_file" = "true" ]; then
-      make -j$(nproc) 2> "$_where/debug.log"
+      make -C "${srcdir}/${pkgname}-64-build" -j$(nproc) 2> "$_where/debug.log"
     else
       #_buildtime64=$( time ( make -j$(nproc) 2>&1 ) 3>&1 1>&2 2>&3 ) - Bash 5.2 is frogged - https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1018727
-      make -j$(nproc)
+      make -C "${srcdir}/${pkgname}-64-build" -j$(nproc)
     fi
   else
     # make using makepkg settings

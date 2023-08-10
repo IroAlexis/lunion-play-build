@@ -212,6 +212,11 @@ if [ -n "$_custom_wine_source" ]; then
   fi
 fi
 
+_winemirrorpath="${_where}/${_winesrcdir}"
+_stgmirrorpath="${_where}/${_stgsrcdir}"
+_winesrcpath="${srcdir}/${_winesrcdir}"
+_stgsrcpath="${srcdir}/${_stgsrcdir}"
+
 if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
   # remove src symlink if it exists
   if [ -L "$_where"/src ]; then
